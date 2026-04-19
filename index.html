@@ -432,7 +432,7 @@ async function writeGist(d){
   if(!res.ok)throw new Error(`HTTP ${res.status}`);
 }
 function loadData(){return loadLocal();}
-function saveData(){saveLocal(DB);clearTimeout(syncTimer);syncTimer=setTimeout(pushToCloud,800);}
+function saveData(){saveLocal(DB);saveActiveGame();clearTimeout(syncTimer);syncTimer=setTimeout(pushToCloud,800);}
 async function pushToCloud(){if(isSyncing)return;isSyncing=true;setStatus('syncing');try{await writeGist(DB);setStatus('ok');}catch(e){console.warn(e);setStatus('error');}isSyncing=false;}
 async function pullFromCloud(){
   if(!getToken()){setStatus('offline');return;}
@@ -731,10 +731,7 @@ function restoreActiveGame(){
     }
   }catch(e){console.warn('Restore failed',e);}
 }
-// Hook ogni modifica di stato per salvare partita attiva
-// saveData è già definita sopra; qui facciamo patch aggiuntiva chiamando saveActiveGame dopo ogni saveLocal
-const _origSaveLocal=saveLocal;
-function saveLocal(d){_origSaveLocal(d);saveActiveGame();}
+// salva partita attiva dopo ogni saveData
 
 // ============================================================
 // VOICE SYSTEM
