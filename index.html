@@ -117,6 +117,7 @@
   <div class="header-right">
     <div id="sync-status"><span id="sync-dot"></span><span id="sync-label" style="color:var(--text-dim)">...</span></div>
     <button class="btn btn-ghost btn-sm" onclick="forceSync()" title="Sincronizza">🔄</button>
+    <button class="btn btn-ghost btn-sm" onclick="openModal('modal-token')" title="Token">🔑</button>
     <button class="btn btn-ghost btn-sm" onclick="openModal('modal-players')">👥 Giocatori</button>
   </div>
 </header>
@@ -351,6 +352,22 @@
   </div>
 </div>
 
+<!-- MODAL TOKEN -->
+<div class="modal-overlay" id="modal-token">
+  <div class="modal">
+    <div class="modal-title">🔑 Token GitHub</div>
+    <p style="font-size:.85rem;color:var(--text-dim);margin-bottom:16px;">Inserisci il tuo Personal Access Token GitHub (permesso <strong>gist</strong>). Viene salvato solo sul tuo dispositivo, non nel codice.</p>
+    <div class="form-group" style="margin-bottom:16px;">
+      <label>Token</label>
+      <input type="password" id="token-input" placeholder="ghp_..." autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-token')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveTokenFromModal()">✓ Salva e sincronizza</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EDIT LAST ROUND -->
 <div class="modal-overlay" id="modal-edit">
   <div class="modal">
@@ -385,10 +402,13 @@
 // GITHUB GIST SYNC
 // ============================================================
 const GIST_ID='3a413bd4e494f05b89de374d1f90f86e';
-const GIST_TOKEN='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';
 const GIST_FILE='lastanza.json';
 const LOCAL_KEY='lastanza_v3';
+const TOKEN_KEY='lastanza_gh_token';
 let isSyncing=false,syncTimer=null;
+
+function getToken(){return localStorage.getItem(TOKEN_KEY)||'';}
+function setToken(t){localStorage.setItem(TOKEN_KEY,t.trim());}
 
 function setStatus(s){
   const dot=document.getElementById('sync-dot'),lbl=document.getElementById('sync-label');if(!dot)return;
@@ -398,22 +418,41 @@ function setStatus(s){
 function loadLocal(){try{const r=localStorage.getItem(LOCAL_KEY);if(r)return JSON.parse(r);}catch(e){}return{players:['Sbré','Sbri','Singu','Pino','Tecno','Albus','Gabri'],games:[]};}
 function saveLocal(d){try{localStorage.setItem(LOCAL_KEY,JSON.stringify(d));}catch(e){}}
 async function readGist(){
-  const res=await fetch(`https://api.github.com/gists/${GIST_ID}`,{headers:{'Authorization':`token ${GIST_TOKEN}`,'Accept':'application/vnd.github.v3+json'}});
+  const token=getToken();
+  if(!token)throw new Error('no token');
+  const res=await fetch(`https://api.github.com/gists/${GIST_ID}`,{headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github.v3+json'}});
   if(!res.ok)throw new Error(`HTTP ${res.status}`);
   const data=await res.json();
   return JSON.parse(data.files[GIST_FILE].content);
 }
 async function writeGist(d){
-  const res=await fetch(`https://api.github.com/gists/${GIST_ID}`,{method:'PATCH',headers:{'Authorization':`token ${GIST_TOKEN}`,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(d)}}})});
+  const token=getToken();
+  if(!token)throw new Error('no token');
+  const res=await fetch(`https://api.github.com/gists/${GIST_ID}`,{method:'PATCH',headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify({files:{[GIST_FILE]:{content:JSON.stringify(d)}}})});
   if(!res.ok)throw new Error(`HTTP ${res.status}`);
 }
 function loadData(){return loadLocal();}
 function saveData(){saveLocal(DB);clearTimeout(syncTimer);syncTimer=setTimeout(pushToCloud,800);}
 async function pushToCloud(){if(isSyncing)return;isSyncing=true;setStatus('syncing');try{await writeGist(DB);setStatus('ok');}catch(e){console.warn(e);setStatus('error');}isSyncing=false;}
-async function pullFromCloud(){setStatus('loading');try{const remote=await readGist();if(remote&&remote.games!==undefined){DB=remote;saveLocal(DB);setStatus('ok');renderRecentGames();renderVinciPlayerSelect();renderHeartsPlayerSelect();updateBurracoSetup();populateTresetteSelects();if(document.getElementById('page-stats').classList.contains('active'))renderStats(currentFilter);}}catch(e){console.warn(e);setStatus('error');}}
+async function pullFromCloud(){
+  if(!getToken()){setStatus('offline');return;}
+  setStatus('loading');
+  try{
+    const remote=await readGist();
+    if(remote&&remote.games!==undefined){DB=remote;saveLocal(DB);setStatus('ok');renderRecentGames();renderVinciPlayerSelect();renderHeartsPlayerSelect();updateBurracoSetup();populateTresetteSelects();if(document.getElementById('page-stats').classList.contains('active'))renderStats(currentFilter);}
+  }catch(e){console.warn(e);setStatus('error');}
+}
 async function forceSync(){await pullFromCloud();}
 async function initCloud(){await pullFromCloud();}
 setInterval(()=>{if(!document.hidden)pullFromCloud();},30000);
+
+function saveTokenFromModal(){
+  const t=document.getElementById('token-input').value.trim();
+  if(!t){alert('Inserisci il token!');return;}
+  setToken(t);
+  closeModal('modal-token');
+  pullFromCloud();
+}
 
 // ============================================================
 // DB & NAV
