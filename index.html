@@ -167,7 +167,6 @@
   <div class="card" id="vinci-game-over" style="display:none;">
     <div class="game-over-banner"><h2>🏁 Fine Partita!</h2><div id="vinci-final-results" style="margin-top:12px;"></div></div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px;">
-      <button class="btn btn-primary" onclick="saveVinciResults()">💾 Salva &amp; Archivia</button>
       <button class="btn btn-ghost" onclick="resetVinci()">🔄 Nuova partita</button>
     </div>
   </div>
@@ -208,7 +207,7 @@
   <div class="card" id="burraco-game-over" style="display:none;">
     <div class="game-over-banner"><h2>🏁 Fine Partita!</h2><div id="burraco-final-results" style="margin-top:12px;"></div></div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px;">
-      <button class="btn btn-primary" onclick="saveBurracoResults()">💾 Salva &amp; Archivia</button>
+      
       <button class="btn btn-ghost" onclick="resetBurraco()">🔄 Nuova partita</button>
     </div>
   </div>
@@ -244,7 +243,7 @@
   <div class="card" id="tresette-game-over" style="display:none;">
     <div class="game-over-banner"><h2>🏁 Fine Partita!</h2><div id="tresette-final-results" style="margin-top:12px;"></div></div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px;">
-      <button class="btn btn-primary" onclick="saveTresetteResults()">💾 Salva &amp; Archivia</button>
+      
       <button class="btn btn-ghost" onclick="resetTresette()">🔄 Nuova partita</button>
     </div>
   </div>
@@ -290,7 +289,7 @@
   <div class="card" id="hearts-game-over" style="display:none;">
     <div class="game-over-banner"><h2>🏁 Fine Partita!</h2><div id="hearts-final-results" style="margin-top:12px;"></div></div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px;">
-      <button class="btn btn-primary" onclick="saveHeartsResults()">💾 Salva &amp; Archivia</button>
+      
       <button class="btn btn-ghost" onclick="resetHearts()">🔄 Nuova partita</button>
     </div>
   </div>
@@ -528,7 +527,7 @@ function startVinci(){
   if(sel.length!==mode){warn.textContent=`Seleziona esattamente ${mode} giocatori!`;warn.style.display='block';return;}
   warn.style.display='none';
   const limit=mode===5?31:21;
-  vinciState={mode,limit,players:sel,totals:Object.fromEntries(sel.map(p=>[p,0])),rounds:[],active:true};
+  vinciState={mode,limit,players:sel,totals:Object.fromEntries(sel.map(p=>[p,0])),rounds:[],eliminated:[],active:true};
   document.getElementById('vinci-setup-card').style.display='none';
   document.getElementById('vinci-game-over').style.display='none';
   document.getElementById('vinci-game').style.display='block';
@@ -536,39 +535,78 @@ function startVinci(){
   renderVinciInputs();renderVinciScoreboard();
 }
 function renderVinciInputs(){
-  document.getElementById('vinci-inputs').innerHTML=vinciState.players.map(p=>`<div class="form-group"><label>${p}</label><input type="number" id="vi-${p.replace(/\s/g,'_')}" placeholder="0"></div>`).join('');
-  document.getElementById('vinci-round-num').textContent=`#${vinciState.rounds.length+1}`;
+  document.getElementById('vinci-inputs').innerHTML=vinciState.players.map(p=>{
+    const elim=vinciState.eliminated.includes(p);
+    const lstyle=elim?'opacity:.4;text-decoration:line-through':'';
+    const info=elim?' ☠ '+vinciState.totals[p]:'';
+    const inp=elim?'<input type="number" disabled placeholder="—">':'<input type="number" id="vi-'+p.replace(/\s/g,'_')+'" placeholder="0">';
+    return '<div class="form-group"><label style="'+lstyle+'">'+p+info+'</label>'+inp+'</div>';
+  }).join('');
+  document.getElementById('vinci-round-num').textContent='#'+(vinciState.rounds.length+1);
 }
 function addVinciRound(){
   const scores={};let valid=true;
-  for(const p of vinciState.players){const v=parseInt(document.getElementById(`vi-${p.replace(/\s/g,'_')}`).value);if(isNaN(v)){valid=false;break;}scores[p]=v;}
+  const active=vinciState.players.filter(p=>!vinciState.eliminated.includes(p));
+  for(const p of active){const v=parseInt(document.getElementById(`vi-${p.replace(/\s/g,'_')}`).value);if(isNaN(v)){valid=false;break;}scores[p]=v;}
   if(!valid){showAlert('vinci-alert','Inserisci i punteggi per tutti!','info');return;}
-  for(const p of vinciState.players)vinciState.totals[p]+=scores[p];
-  vinciState.rounds.push({...scores});
-  renderVinciInputs();renderVinciScoreboard();renderVinciHistory();
-  const above=vinciState.players.filter(p=>vinciState.totals[p]>=vinciState.limit);
-  if(vinciState.mode===5&&above.length>=2)endVinci();
-  else if(vinciState.mode===3&&above.length>=1)endVinci();
+  for(const p of active)vinciState.totals[p]+=scores[p];
+  const roundData={};vinciState.players.forEach(p=>roundData[p]=scores[p]??0);
+  vinciState.rounds.push(roundData);
+  if(vinciState.mode===5){
+    const newlyOver=active.filter(p=>vinciState.totals[p]>=vinciState.limit);
+    if(newlyOver.length>0){
+      const wasIn4=vinciState.eliminated.length===1;
+      if(wasIn4){
+        newlyOver.sort((a,b)=>vinciState.totals[b]-vinciState.totals[a]);
+        vinciState.eliminated.push(newlyOver[0]);
+        endVinci();
+      } else {
+        if(newlyOver.length>=2){newlyOver.forEach(p=>vinciState.eliminated.push(p));endVinci();}
+        else{vinciState.eliminated.push(newlyOver[0]);renderVinciInputs();renderVinciScoreboard();renderVinciHistory();showAlert('vinci-alert',`${newlyOver[0]} sfora ed è eliminato! Si continua in 4.`,'warn');}
+      }
+    } else {renderVinciInputs();renderVinciScoreboard();renderVinciHistory();}
+  } else {
+    const over=active.filter(p=>vinciState.totals[p]>=vinciState.limit);
+    if(over.length>0)endVinci();
+    else{renderVinciInputs();renderVinciScoreboard();renderVinciHistory();}
+  }
 }
 function endVinci(){
   vinciState.active=false;
-  const sorted=[...vinciState.players].sort((a,b)=>vinciState.totals[a]-vinciState.totals[b]);
-  const out={};
-  if(vinciState.mode===5){sorted.forEach((p,i)=>{out[p]=i<2?'win':i===2?'draw':'lose';});}
-  else{out[sorted[0]]='win';out[sorted[1]]='draw';out[sorted[2]]='lose';}
+  const out={};const players=vinciState.players;const totals=vinciState.totals;
+  if(vinciState.mode===5){
+    const remaining=players.filter(p=>!vinciState.eliminated.includes(p));
+    const alsoOver=remaining.filter(p=>totals[p]>=vinciState.limit);
+    if(vinciState.eliminated.length===1&&alsoOver.length>=1){
+      alsoOver.sort((a,b)=>totals[b]-totals[a]);
+      vinciState.eliminated.push(alsoOver[0]);
+    }
+    vinciState.eliminated.forEach(p=>out[p]='lose');
+    const survivors=players.filter(p=>!vinciState.eliminated.includes(p));
+    survivors.sort((a,b)=>totals[a]-totals[b]);
+    survivors.forEach((p,i)=>{out[p]=i<2?'win':'draw';});
+  } else {
+    const sorted=players.slice().sort((a,b)=>totals[a]-totals[b]);
+    out[sorted[0]]='win';out[sorted[1]]='lose';out[sorted[2]]='lose';
+  }
   vinciState.outcomes=out;
   document.getElementById('vinci-game').style.display='none';
   document.getElementById('vinci-game-over').style.display='block';
-  document.getElementById('vinci-final-results').innerHTML=sorted.map(p=>{const o=out[p],pill=o==='win'?'pill-win':o==='draw'?'pill-draw':'pill-lose',lab=o==='win'?'VINCE':o==='draw'?'PAREGGIA':'PERDE',over=vinciState.totals[p]>=vinciState.limit;return `<div style="margin:6px 0;display:flex;align-items:center;gap:10px;justify-content:center;"><strong>${p}</strong><span class="num" style="color:${over?'var(--lose)':'inherit'}">${vinciState.totals[p]}</span>${over?'<span class="pill pill-lose">sfora</span>':''}<span class="pill ${pill}">${lab}</span></div>`;}).join('');
+  const sorted=[...players].sort((a,b)=>totals[a]-totals[b]);
+  document.getElementById('vinci-final-results').innerHTML=sorted.map(p=>{
+    const o=out[p],pill=o==='win'?'pill-win':o==='draw'?'pill-draw':'pill-lose',lab=o==='win'?'VINCE':o==='draw'?'PAREGGIA':'PERDE',over=totals[p]>=vinciState.limit;
+    return `<div style="margin:6px 0;display:flex;align-items:center;gap:10px;justify-content:center;"><strong>${p}</strong><span class="num" style="color:${over?'var(--lose)':'inherit'}">${totals[p]}</span>${over?'<span class="pill pill-lose">sfora</span>':''}<span class="pill ${pill}">${lab}</span></div>`;
+  }).join('');
+  saveVinciResults();
+  speakResult(out);
   saveActiveGame();
 }
 function saveVinciResults(){
-  // cappotto perso: almeno una mano in cui il giocatore ha fatto 11
   const cappottoVinciPerPlayer={};
   vinciState.players.forEach(p=>cappottoVinciPerPlayer[p]=false);
   vinciState.rounds.forEach(r=>{vinciState.players.forEach(p=>{if(r[p]===11)cappottoVinciPerPlayer[p]=true;});});
   DB.games.push({id:Date.now(),type:'vinci',date:new Date().toLocaleString('it-IT'),participants:vinciState.players,result:vinciState.players.map(p=>({player:p,outcome:vinciState.outcomes[p],score:vinciState.totals[p],cappottoVinci:cappottoVinciPerPlayer[p]||undefined}))});
-  saveData();showAlert('vinci-alert','Partita salvata!','success');resetVinci();
+  saveData();
 }
 function resetVinci(){vinciState=null;document.getElementById('vinci-setup-card').style.display='block';document.getElementById('vinci-game-over').style.display='none';document.getElementById('vinci-game').style.display='none';renderVinciPlayerSelect();}
 function renderVinciScoreboard(){
@@ -608,8 +646,9 @@ function startBurraco(){
 }
 function renderBurracoInputs(){document.getElementById('burraco-inputs').innerHTML=burracoState.teams.map((t,i)=>`<div class="form-group"><label>${t.name}</label><input type="number" id="bi-${i}" placeholder="Punti mano..."></div>`).join('');document.getElementById('burraco-round-num').textContent=`#${burracoState.rounds.length+1}`;}
 function addBurracoRound(){const scores=burracoState.teams.map((_,i)=>parseInt(document.getElementById(`bi-${i}`).value));if(scores.some(s=>isNaN(s))){showAlert('burraco-alert','Inserisci tutti i punteggi!','info');return;}burracoState.teams.forEach((t,i)=>t.total+=scores[i]);burracoState.rounds.push([...scores]);renderBurracoInputs();renderBurracoScoreboard();renderBurracoHistory();if(burracoState.teams.find(t=>t.total>=burracoState.target))endBurraco();}
-function endBurraco(){burracoState.active=false;const sorted=[...burracoState.teams].sort((a,b)=>b.total-a.total),max=sorted[0].total,winners=sorted.filter(t=>t.total===max);burracoState.teams.forEach(t=>{t.outcome=winners.length>1&&winners.includes(t)?'draw':t.total===max?'win':'lose';});document.getElementById('burraco-game').style.display='none';document.getElementById('burraco-game-over').style.display='block';document.getElementById('burraco-final-results').innerHTML=sorted.map(t=>{const pill=t.outcome==='win'?'pill-win':t.outcome==='draw'?'pill-draw':'pill-lose',lab=t.outcome==='win'?'VINCE':t.outcome==='draw'?'PAREGGIA':'PERDE';return `<div style="margin:6px 0;display:flex;align-items:center;gap:10px;justify-content:center;"><strong>${t.name}</strong><span class="num">${t.total}</span><span class="pill ${pill}">${lab}</span></div>`;}).join('');saveActiveGame();}
-function saveBurracoResults(){DB.games.push({id:Date.now(),type:'burraco',date:new Date().toLocaleString('it-IT'),participants:burracoState.teams.flatMap(t=>t.players),result:burracoState.teams.flatMap(t=>t.players.map(p=>({player:p,outcome:t.outcome,score:t.total})))});saveData();showAlert('burraco-alert','Partita salvata!','success');resetBurraco();}
+function endBurraco(){burracoState.active=false;const sorted=[...burracoState.teams].sort((a,b)=>b.total-a.total),max=sorted[0].total,winners=sorted.filter(t=>t.total===max);burracoState.teams.forEach(t=>{t.outcome=winners.length>1&&winners.includes(t)?'draw':t.total===max?'win':'lose';});document.getElementById('burraco-game').style.display='none';document.getElementById('burraco-game-over').style.display='block';document.getElementById('burraco-final-results').innerHTML=sorted.map(t=>{const pill=t.outcome==='win'?'pill-win':t.outcome==='draw'?'pill-draw':'pill-lose',lab=t.outcome==='win'?'VINCE':t.outcome==='draw'?'PAREGGIA':'PERDE';return `<div style="margin:6px 0;display:flex;align-items:center;gap:10px;justify-content:center;"><strong>${t.name}</strong><span class="num">${t.total}</span><span class="pill ${pill}">${lab}</span></div>`;}).join('');
+const out=Object.fromEntries(burracoState.teams.map(t=>[t.name,t.outcome]));
+DB.games.push({id:Date.now(),type:'burraco',date:new Date().toLocaleString('it-IT'),participants:burracoState.teams.flatMap(t=>t.players),result:burracoState.teams.flatMap(t=>t.players.map(p=>({player:p,outcome:t.outcome,score:t.total})))});saveData();speakResult(out);saveActiveGame();}
 function resetBurraco(){burracoState=null;document.getElementById('burraco-setup-card').style.display='block';document.getElementById('burraco-game-over').style.display='none';document.getElementById('burraco-game').style.display='none';updateBurracoSetup();}
 function renderBurracoScoreboard(){const sorted=[...burracoState.teams].sort((a,b)=>b.total-a.total);document.getElementById('burraco-scoreboard').innerHTML=`<thead><tr><th>#</th><th>Squadra</th><th>Totale</th><th>Al target</th></tr></thead><tbody>${sorted.map((t,i)=>{const over=t.total>=burracoState.target,diff=burracoState.target-t.total;return `<tr><td class="num" style="color:var(--text-dim)">${i+1}</td><td><strong>${t.name}</strong></td><td class="num" style="color:${over?'var(--win)':'var(--text)'}">${t.total}</td><td>${over?'<span class="pill pill-win">✓</span>':`<span style="color:var(--text-dim)">-${diff}</span>`}</td></tr>`;}).join('')}</tbody>`;}function renderBurracoHistory(){document.getElementById('burraco-history').innerHTML=burracoState.rounds.map((r,i)=>`<div class="round-entry"><span class="round-num">#${i+1}</span>${burracoState.teams.map((t,j)=>`<span style="display:flex;gap:4px;align-items:center;font-size:.83rem;"><span style="color:var(--text-dim);font-weight:700">${t.name}:</span><span class="num">${r[j]}</span></span>`).join('')}</div>`).reverse().join('');}
 
@@ -628,8 +667,9 @@ function startTresette(){
 }
 function renderTresetteInputs(){document.getElementById('tresette-inputs').innerHTML=tresetteState.teams.map((t,i)=>`<div class="form-group"><label>${t.name}</label><input type="number" id="tsi-${i}" placeholder="Punti mano..."></div>`).join('');document.getElementById('tresette-round-num').textContent=`#${tresetteState.rounds.length+1}`;}
 function addTresetteRound(){const scores=tresetteState.teams.map((_,i)=>parseInt(document.getElementById(`tsi-${i}`).value));if(scores.some(s=>isNaN(s))){showAlert('tresette-alert','Inserisci i punteggi per entrambe le coppie!','info');return;}tresetteState.teams.forEach((t,i)=>t.total+=scores[i]);tresetteState.rounds.push([...scores]);renderTresetteInputs();renderTresetteScoreboard();renderTresetteHistory();if(tresetteState.teams.find(t=>t.total>=tresetteState.target))endTresette();}
-function endTresette(){tresetteState.active=false;const sorted=[...tresetteState.teams].sort((a,b)=>b.total-a.total),max=sorted[0].total,winners=sorted.filter(t=>t.total===max);tresetteState.teams.forEach(t=>{t.outcome=winners.length>1&&winners.includes(t)?'draw':t.total===max?'win':'lose';});document.getElementById('tresette-game').style.display='none';document.getElementById('tresette-game-over').style.display='block';document.getElementById('tresette-final-results').innerHTML=sorted.map(t=>{const pill=t.outcome==='win'?'pill-win':t.outcome==='draw'?'pill-draw':'pill-lose',lab=t.outcome==='win'?'VINCE':t.outcome==='draw'?'PAREGGIA':'PERDE';return `<div style="margin:6px 0;display:flex;align-items:center;gap:10px;justify-content:center;"><strong>${t.name}</strong><span class="num">${t.total}</span><span class="pill ${pill}">${lab}</span></div>`;}).join('');saveActiveGame();}
-function saveTresetteResults(){DB.games.push({id:Date.now(),type:'tresette',date:new Date().toLocaleString('it-IT'),participants:tresetteState.teams.flatMap(t=>t.players),result:tresetteState.teams.flatMap(t=>t.players.map(p=>({player:p,outcome:t.outcome,score:t.total})))});saveData();showAlert('tresette-alert','Partita salvata!','success');resetTresette();}
+function endTresette(){tresetteState.active=false;const sorted=[...tresetteState.teams].sort((a,b)=>b.total-a.total),max=sorted[0].total,winners=sorted.filter(t=>t.total===max);tresetteState.teams.forEach(t=>{t.outcome=winners.length>1&&winners.includes(t)?'draw':t.total===max?'win':'lose';});document.getElementById('tresette-game').style.display='none';document.getElementById('tresette-game-over').style.display='block';document.getElementById('tresette-final-results').innerHTML=sorted.map(t=>{const pill=t.outcome==='win'?'pill-win':t.outcome==='draw'?'pill-draw':'pill-lose',lab=t.outcome==='win'?'VINCE':t.outcome==='draw'?'PAREGGIA':'PERDE';return `<div style="margin:6px 0;display:flex;align-items:center;gap:10px;justify-content:center;"><strong>${t.name}</strong><span class="num">${t.total}</span><span class="pill ${pill}">${lab}</span></div>`;}).join('');
+const out=Object.fromEntries(tresetteState.teams.map(t=>[t.name,t.outcome]));
+DB.games.push({id:Date.now(),type:'tresette',date:new Date().toLocaleString('it-IT'),participants:tresetteState.teams.flatMap(t=>t.players),result:tresetteState.teams.flatMap(t=>t.players.map(p=>({player:p,outcome:t.outcome,score:t.total})))});saveData();speakResult(out);saveActiveGame();}
 function resetTresette(){tresetteState=null;document.getElementById('tresette-setup-card').style.display='block';document.getElementById('tresette-game-over').style.display='none';document.getElementById('tresette-game').style.display='none';}
 function renderTresetteScoreboard(){const sorted=[...tresetteState.teams].sort((a,b)=>b.total-a.total);document.getElementById('tresette-scoreboard').innerHTML=`<thead><tr><th>#</th><th>Coppia</th><th>Totale</th><th>Al target</th></tr></thead><tbody>${sorted.map((t,i)=>{const over=t.total>=tresetteState.target,diff=tresetteState.target-t.total;return `<tr><td class="num" style="color:var(--text-dim)">${i+1}</td><td><strong>${t.name}</strong></td><td class="num" style="color:${over?'var(--win)':'var(--text)'}">${t.total}</td><td>${over?'<span class="pill pill-win">✓</span>':`<span style="color:var(--text-dim)">-${diff}</span>`}</td></tr>`;}).join('')}</tbody>`;}
 function renderTresetteHistory(){document.getElementById('tresette-history').innerHTML=tresetteState.rounds.map((r,i)=>`<div class="round-entry"><span class="round-num">#${i+1}</span>${tresetteState.teams.map((t,j)=>`<span style="display:flex;gap:4px;align-items:center;font-size:.83rem;"><span style="color:var(--text-dim);font-weight:700">${t.name}:</span><span class="num">${r[j]}</span></span>`).join('')}</div>`).reverse().join('');}
@@ -641,20 +681,10 @@ let heartsState=null;
 function renderHeartsPlayerSelect(){const el=document.getElementById('hearts-player-select');if(!el)return;el.innerHTML=DB.players.map((p,i)=>`<div><input type="checkbox" class="player-cb" id="hcb-${i}" value="${p}"><label class="player-cb-label" for="hcb-${i}">${p}</label></div>`).join('');}
 function startHearts(){const sel=[...document.querySelectorAll('#hearts-player-select .player-cb:checked')].map(c=>c.value);const w=document.getElementById('hearts-select-warn');if(sel.length<3||sel.length>7){w.style.display='block';return;}w.style.display='none';heartsState={players:sel,totals:Object.fromEntries(sel.map(p=>[p,0])),rounds:[],active:true};document.getElementById('hearts-setup-card').style.display='none';document.getElementById('hearts-game-over').style.display='none';document.getElementById('hearts-game').style.display='block';renderHeartsInputs();renderHeartsScoreboard();}
 function renderHeartsInputs(){document.getElementById('hearts-inputs').innerHTML=heartsState.players.map(p=>`<div class="form-group"><label>${p}</label><input type="number" id="hi-${p.replace(/\s/g,'_')}" placeholder="0" max="26"></div>`).join('');document.getElementById('hearts-round-num').textContent=`#${heartsState.rounds.length+1}`;}
-function addHeartsRound(){const scores={};let valid=true;for(const p of heartsState.players){const v=parseInt(document.getElementById(`hi-${p.replace(/\s/g,'_')}`).value);if(isNaN(v)){valid=false;break;}scores[p]=v;}if(!valid){showAlert('hearts-alert','Inserisci i punteggi per tutti!','info');return;}const moon=Object.entries(scores).find(([,s])=>s===26);let final={...scores};if(moon){final[moon[0]]=0;heartsState.players.forEach(p=>{if(p!==moon[0])final[p]=(scores[p]||0)+26;});showAlert('hearts-alert',`🌙 Moon shot di ${moon[0]}!`,'success');}for(const p of heartsState.players)heartsState.totals[p]+=final[p];heartsState.rounds.push({...final,_moon:moon?moon[0]:null});renderHeartsInputs();renderHeartsScoreboard();renderHeartsHistory();if(heartsState.players.some(p=>heartsState.totals[p]>=101))endHearts();}
-function endHearts(){heartsState.active=false;const sorted=[...heartsState.players].sort((a,b)=>heartsState.totals[a]-heartsState.totals[b]),min=heartsState.totals[sorted[0]],winners=sorted.filter(p=>heartsState.totals[p]===min);heartsState.outcomes={};heartsState.players.forEach(p=>{heartsState.outcomes[p]=winners.length>1&&winners.includes(p)?'draw':heartsState.totals[p]===min?'win':'lose';});document.getElementById('hearts-game').style.display='none';document.getElementById('hearts-game-over').style.display='block';document.getElementById('hearts-final-results').innerHTML=sorted.map(p=>{const o=heartsState.outcomes[p],pill=o==='win'?'pill-win':o==='draw'?'pill-draw':'pill-lose',lab=o==='win'?'VINCE':o==='draw'?'PAREGGIA':'PERDE',over=heartsState.totals[p]>=101;return `<div style="margin:6px 0;display:flex;align-items:center;gap:10px;justify-content:center;"><strong>${p}</strong><span class="num" style="color:${over?'var(--lose)':'inherit'}">${heartsState.totals[p]}</span>${over?'<span class="pill pill-lose">💀 sfora</span>':''}<span class="pill ${pill}">${lab}</span></div>`;}).join('');saveActiveGame();}
-function saveHeartsResults(){
-  // cappotto: una mano in cui un giocatore fa 0 e tutti gli altri fanno 26
-  const cappottiPerPlayer={};
-  heartsState.players.forEach(p=>cappottiPerPlayer[p]=0);
-  heartsState.rounds.forEach(r=>{
-    const zeroPlayers=heartsState.players.filter(p=>r[p]===0&&!r._moon);
-    const allOthers26=zeroPlayers.length===1&&heartsState.players.every(p=>zeroPlayers.includes(p)||r[p]===26);
-    if(allOthers26) cappottiPerPlayer[zeroPlayers[0]]++;
-  });
-  DB.games.push({id:Date.now(),type:'hearts',date:new Date().toLocaleString('it-IT'),participants:heartsState.players,result:heartsState.players.map(p=>({player:p,outcome:heartsState.outcomes[p],score:heartsState.totals[p],cappotto:cappottiPerPlayer[p]>0?cappottiPerPlayer[p]:undefined}))});
-  saveData();showAlert('hearts-alert','Partita salvata!','success');resetHearts();
-}
+function addHeartsRound(){const scores={};let valid=true;for(const p of heartsState.players){const v=parseInt(document.getElementById(`hi-${p.replace(/\s/g,'_')}`).value);if(isNaN(v)){valid=false;break;}scores[p]=v;}if(!valid){showAlert('hearts-alert','Inserisci i punteggi per tutti!','info');return;}
+  const moonPlayer=heartsState.players.find(p=>scores[p]===26&&heartsState.players.every(other=>other===p||scores[other]===0));
+  let final={...scores};if(moonPlayer){final[moonPlayer]=0;heartsState.players.forEach(p=>{if(p!==moonPlayer)final[p]=26;});showAlert('hearts-alert',`🌙 Moon shot di ${moonPlayer}!`,'success');}
+  for(const p of heartsState.players)heartsState.totals[p]+=final[p];heartsState.rounds.push({...final,_moon:moonPlayer||null});renderHeartsInputs();renderHeartsScoreboard();renderHeartsHistory();if(heartsState.players.some(p=>heartsState.totals[p]>=101))endHearts();}
 function resetHearts(){heartsState=null;document.getElementById('hearts-setup-card').style.display='block';document.getElementById('hearts-game-over').style.display='none';document.getElementById('hearts-game').style.display='none';renderHeartsPlayerSelect();}
 function renderHeartsScoreboard(){const sorted=[...heartsState.players].sort((a,b)=>heartsState.totals[a]-heartsState.totals[b]);document.getElementById('hearts-scoreboard').innerHTML=`<thead><tr><th>#</th><th>Giocatore</th><th>Punti ♥</th><th>Stato</th></tr></thead><tbody>${sorted.map((p,i)=>{const t=heartsState.totals[p],over=t>=101,danger=t>=80;const st=i===0?'<span class="pill pill-win">↓ Migliore</span>':over?'<span class="pill pill-lose">💀 Sfora</span>':danger?'<span class="pill pill-lose">⚠ Attenzione</span>':'<span class="pill pill-lead">In corsa</span>';return `<tr><td class="num" style="color:var(--text-dim)">${i+1}</td><td><strong>${p}</strong></td><td class="num" style="color:${over?'var(--lose)':danger?'var(--draw)':'var(--text)'}">${t}</td><td>${st}</td></tr>`;}).join('')}</tbody>`;}
 function renderHeartsHistory(){document.getElementById('hearts-history').innerHTML=heartsState.rounds.map((r,i)=>`<div class="round-entry"><span class="round-num">#${i+1}</span>${r._moon?`<span class="pill pill-win" style="font-size:.72rem;">🌙 ${r._moon}</span>`:''}${heartsState.players.map(p=>`<span style="display:flex;gap:4px;align-items:center;font-size:.83rem;"><span style="color:var(--text-dim);font-weight:700">${p}:</span><span class="num" style="color:${r[p]>0?'var(--accent2)':'var(--text-dim)'}">${r[p]}</span></span>`).join('')}</div>`).reverse().join('');}
@@ -689,6 +719,7 @@ function restoreActiveGame(){
     let restored=[];
     if(state.vinci&&state.vinci.active){
       vinciState=state.vinci;
+      if(!vinciState.eliminated)vinciState.eliminated=[];
       document.getElementById('vinci-setup-card').style.display='none';
       document.getElementById('vinci-game-over').style.display='none';
       document.getElementById('vinci-game').style.display='block';
@@ -752,6 +783,21 @@ window.speechSynthesis.onvoiceschanged=()=>window.speechSynthesis.getVoices();
 function loadVoicePrefs(){}
 function populateVoiceSelect(){}
 
+function speakResult(outcomes){
+  if(!window.speechSynthesis)return;
+  const winners=Object.entries(outcomes).filter(([,v])=>v==='win').map(([k])=>k);
+  const draws=Object.entries(outcomes).filter(([,v])=>v==='draw').map(([k])=>k);
+  const losers=Object.entries(outcomes).filter(([,v])=>v==='lose').map(([k])=>k);
+  const parts=[];
+  if(winners.length===1)parts.push(`Vince ${winners[0]}`);
+  else if(winners.length>1)parts.push(`Vincono ${winners.join(' e ')}`);
+  if(draws.length===1)parts.push(`Pareggia ${draws[0]}`);
+  else if(draws.length>1)parts.push(`Pareggiano ${draws.join(' e ')}`);
+  if(losers.length===1)parts.push(`Perde ${losers[0]}`);
+  else if(losers.length>1)parts.push(`Perdono ${losers.join(' e ')}`);
+  if(parts.length)setTimeout(()=>speak(parts.join('. ')),400);
+}
+
 function speakScores(game){
   if(!window.speechSynthesis){alert('Il tuo browser non supporta la sintesi vocale.');return;}
   window.speechSynthesis.cancel();
@@ -813,6 +859,8 @@ function renderStats(type){
     s.avgScore=s.scores.length?Math.round(s.totalScore/s.scores.length):0;
     s.maxScore=s.scores.length?Math.max(...s.scores.map(x=>x.score)):0;
     s.winRate=s.games>0?Math.round(s.wins/s.games*100):0;
+    s.wlRatio=s.losses>0?(s.wins/s.losses).toFixed(2):s.wins>0?'∞':'—';
+    s.streak=calcStreak(p,games);
     const vsMap={};
     games.forEach(g=>{
       const myRes=(g.result||[]).find(r=>r.player===p&&r.outcome==='lose');
@@ -831,6 +879,7 @@ function renderStats(type){
       ${(type==='vinci'&&s.cappottiVinci>0)?`<div>💀 Cappotti persi: <strong>${s.cappottiVinci}</strong></div>`:''}
       ${renderSparkline(p,s.scores,i)}
     `:'';
+    const streakText=s.streak>0?`<div>🔥 <strong>${s.streak}</strong> vittorie di fila</div>`:s.streak<0?`<div>💀 <strong>${Math.abs(s.streak)}</strong> sconfitte di fila</div>`:'';
     return `<div class="stat-card ${playerColor(i)}">
       <div class="stat-name">${p}</div>
       <div class="stat-numbers">
@@ -841,6 +890,8 @@ function renderStats(type){
       </div>
       ${winBar}
       <div class="stats-extra">
+        ${s.games>0?`<div>📊 W/L ratio: <strong>${s.wlRatio}</strong></div>`:''}
+        ${streakText}
         ${s.nemesis?`<div><span style="color:var(--accent2)">👹 Nemesi: <strong>${s.nemesis}</strong></span></div>`:''}
         ${last10Dots(p, games)}
         ${perGameExtras}
